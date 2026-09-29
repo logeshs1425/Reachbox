@@ -45,6 +45,7 @@ export async function fetchEmails(
   const res = await fetch(`${API_URL}/api/emails?status=${status}`, {
     headers: authHeaders(token),
   });
+  if (!res.ok) throw new Error("Could not load emails");
   const data = (await res.json()) as { emails: EmailJob[] };
   return data.emails;
 }
@@ -68,8 +69,23 @@ export async function searchEmails(
     `${API_URL}/api/search?q=${encodeURIComponent(q)}`,
     { headers: authHeaders(token) }
   );
-  const data = (await res.json()) as { results: EmailJob[] };
-  return data.results;
+  if (!res.ok) throw new Error("Could not search emails");
+  const data = (await res.json()) as { results: Partial<EmailJob>[] };
+  return data.results.map((email) => ({
+    id: email.id!, fromEmail: email.fromEmail ?? "", toEmail: email.toEmail ?? "",
+    toName: email.toName ?? null, subject: email.subject ?? "", bodyHtml: email.bodyHtml ?? email.bodyText ?? "",
+    bodyText: email.bodyText ?? null, scheduledAt: email.scheduledAt ?? email.createdAt ?? new Date().toISOString(),
+    status: email.status ?? "QUEUED", sentAt: email.sentAt ?? null, etherealPreview: email.etherealPreview ?? null,
+    createdAt: email.createdAt ?? new Date().toISOString(),
+  }));
+}
+
+export async function exchangeLoginCode(code: string): Promise<string> {
+  const res = await fetch(`${API_URL}/api/auth/exchange`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code }),
+  });
+  if (!res.ok) throw new Error("Login code could not be exchanged");
+  return ((await res.json()) as { token: string }).token;
 }
 
 export async function createEmail(

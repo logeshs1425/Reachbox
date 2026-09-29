@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { requireAuth } from "../auth/middleware.js";
 import { config } from "../config.js";
+import jwt from "jsonwebtoken";
 import { prisma } from "../db.js";
 import {
   disconnectSlack,
@@ -29,9 +30,8 @@ slackRouter.get("/callback", async (req, res) => {
   }
 
   try {
-    const state = JSON.parse(
-      Buffer.from(stateRaw, "base64url").toString("utf8")
-    ) as { userId: string };
+    const state = jwt.verify(stateRaw, config.jwtSecret) as { userId: string; purpose: string };
+    if (state.purpose !== "slack-oauth") throw new Error("Invalid OAuth state");
 
     const tokens = await exchangeSlackCode(code);
 

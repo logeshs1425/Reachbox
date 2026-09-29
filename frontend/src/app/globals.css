@@ -16,3 +16,7 @@ body {
   background: var(--surface);
   color: #0f172a;
 }
+
+* { box-sizing: border-box; }
+button, a, input, textarea { -webkit-tap-highlight-color: transparent; }
+::selection { background: #ccfbf1; color: #134e4a; }

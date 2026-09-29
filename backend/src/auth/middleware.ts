@@ -1,7 +1,7 @@
 import jwt from "jsonwebtoken";
 import { Request, Response, NextFunction } from "express";
-import { config } from "./config.js";
-import { prisma } from "./db.js";
+import { config } from "../config.js";
+import { prisma } from "../db.js";
 
 export type AuthUser = {
   id: string;
@@ -75,8 +75,6 @@ export async function requireAuth(
 
 declare global {
   namespace Express {
-    interface Request {
-      user?: AuthUser;
-    }
+    interface User extends AuthUser {}
   }
 }
