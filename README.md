@@ -19,7 +19,7 @@ flowchart LR
 
 - **Scheduling:** BullMQ **delayed jobs** (`delay = scheduledAt - now`). No cron.
 - **Persistence:** Jobs live in Redis; email rows in Postgres. On startup, `recoverPendingJobs()` re-adds DB rows that have no BullMQ job (e.g. Redis flush).
-- **Idempotency:** BullMQ `jobId = emailJobId`. Worker skips if status is `SENT` / `CANCELLED`.
+- **Idempotency:** BullMQ `jobId = emailJobId`; a conditional DB status claim prevents two workers from sending the same row. A crash after SMTP accepts a message but before Postgres records `SENT` is inherently ambiguous because SMTP offers no idempotency key; startup marks interrupted `SENDING` rows failed for review rather than blindly resending and risking duplicates.
 
 ## Rate limiting & throughput
 
@@ -32,9 +32,9 @@ flowchart LR
 
 **Enforcement (Redis, safe across workers/instances):**
 
-1. Before send, `INCR` keys `rate:global:{YYYYMMDDHH}` and `rate:sender:{email}:{YYYYMMDDHH}` (UTC hour windows, 2h TTL).
+1. Before send, a Redis Lua script atomically checks and increments `rate:global:{YYYYMMDDHH}` and `rate:sender:{email}:{YYYYMMDDHH}` (UTC hour windows, 2h TTL).
 2. If over limit, counters are rolled back, **`job.moveToDelayed(nextHour)`** runs (jobs are **not dropped**), and Slack is notified once per user/sender/reason/hour.
-3. **BullMQ limiter** on the worker: `max: 1` per `MIN_DELAY_BETWEEN_SENDS_MS` plus an Redis-backed global “last send” guard for spacing under concurrency.
+3. BullMQ's Redis-backed queue limiter (`max: 1` per `MIN_DELAY_BETWEEN_SENDS_MS`) spaces sends across worker instances; configured concurrency controls parallel job processing while the limiter serializes SMTP starts.
 
 **Load (1000+ jobs at same time):** Jobs become active as delays expire; concurrency + min-delay throttle SMTP; hourly caps delay overflow into the next UTC hour while preserving FIFO per queue as much as BullMQ ordering allows.
 
@@ -66,7 +66,7 @@ npm run dev
 
 - App: http://localhost:3000  
 - API: http://localhost:4000  
-- **Bull Board:** http://localhost:4000/admin/queues  
+- **Bull Board:** http://localhost:4000/admin/queues (Google-authenticated)
 
 ## OAuth setup
 

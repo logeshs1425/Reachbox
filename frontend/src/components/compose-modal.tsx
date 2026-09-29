@@ -46,7 +46,7 @@ export function ComposeModal({
         toEmail,
         toName: toName || undefined,
         subject,
-        bodyHtml: `<p>${body.replace(/\n/g, "<br/>")}</p>`,
+        bodyHtml: `<p>${body.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]!).replace(/\n/g, "<br/>")}</p>`,
         bodyText: body,
         scheduledAt: scheduleIso,
       });
@@ -137,7 +137,7 @@ export function ComposeModal({
             <span className="text-slate-600">Schedule (ISO) or use Send Later</span>
             <input
               type="datetime-local"
-              value={scheduledAt ? scheduledAt.slice(0, 16) : ""}
+              value={scheduledAt ? new Date(new Date(scheduledAt).getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ""}
               onChange={(e) =>
                 setScheduledAt(new Date(e.target.value).toISOString())
               }

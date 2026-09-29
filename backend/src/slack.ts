@@ -1,10 +1,11 @@
 import { prisma } from "./db.js";
 import { config } from "./config.js";
+import jwt from "jsonwebtoken";
 
 const SLACK_API = "https://slack.com/api";
 
 export function getSlackAuthorizeUrl(userId: string): string {
-  const state = Buffer.from(JSON.stringify({ userId })).toString("base64url");
+  const state = jwt.sign({ userId, purpose: "slack-oauth" }, config.jwtSecret, { expiresIn: "10m" });
   const scopes = ["chat:write", "im:write", "users:read"].join(",");
 
   const params = new URLSearchParams({

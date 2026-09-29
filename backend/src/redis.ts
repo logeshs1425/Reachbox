@@ -1,4 +1,4 @@
-import Redis from "ioredis";
+import { Redis } from "ioredis";
 import { config } from "./config.js";
 
 export const redis = new Redis(config.redisUrl, {
@@ -32,36 +32,27 @@ export async function tryAcquireSendSlot(params: {
 > {
   const window = hourWindowKey();
   const globalKey = `rate:global:${window}`;
-  const senderKey = `rate:sender:${params.senderEmail}:${window}`;
-
-  const pipe = redis.pipeline();
-  pipe.incr(globalKey);
-  pipe.expire(globalKey, 7200);
-  pipe.incr(senderKey);
-  pipe.expire(senderKey, 7200);
-  const results = await pipe.exec();
-  const globalCount = Number(results?.[0]?.[1] ?? 0);
-  const senderCount = Number(results?.[2]?.[1] ?? 0);
-
-  if (globalCount > params.globalLimit) {
-    await redis.decr(globalKey);
-    if (senderCount > 0) await redis.decr(senderKey);
-    return { ok: false, reason: "global", retryAfterMs: msUntilNextHour() };
-  }
-
-  if (senderCount > params.senderLimit) {
-    await redis.decr(globalKey);
-    await redis.decr(senderKey);
-    return { ok: false, reason: "sender", retryAfterMs: msUntilNextHour() };
-  }
-
+  const senderKey = `rate:sender:${Buffer.from(params.senderEmail.toLowerCase()).toString("hex")}:${window}`;
+  // Reserve both limits atomically so concurrent workers cannot oversubscribe.
+  const result = await redis.eval(
+    `local globalCount = tonumber(redis.call('GET', KEYS[1]) or '0')
+     local senderCount = tonumber(redis.call('GET', KEYS[2]) or '0')
+     if globalCount >= tonumber(ARGV[1]) then return 1 end
+     if senderCount >= tonumber(ARGV[2]) then return 2 end
+     globalCount = redis.call('INCR', KEYS[1])
+     senderCount = redis.call('INCR', KEYS[2])
+     if globalCount == 1 then redis.call('EXPIRE', KEYS[1], 7200) end
+     if senderCount == 1 then redis.call('EXPIRE', KEYS[2], 7200) end
+     return 0`,
+    2,
+    globalKey,
+    senderKey,
+    params.globalLimit,
+    params.senderLimit
+  );
+  if (result === 1) return { ok: false, reason: "global", retryAfterMs: msUntilNextHour() };
+  if (result === 2) return { ok: false, reason: "sender", retryAfterMs: msUntilNextHour() };
   return { ok: true };
-}
-
-export async function releaseSendSlot(senderEmail: string): Promise<void> {
-  const window = hourWindowKey();
-  await redis.decr(`rate:global:${window}`);
-  await redis.decr(`rate:sender:${senderEmail}:${window}`);
 }
 
 export async function shouldNotifyRateLimit(

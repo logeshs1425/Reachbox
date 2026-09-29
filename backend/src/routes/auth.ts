@@ -3,7 +3,9 @@ import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import { config } from "../config.js";
 import { prisma } from "../db.js";
-import { signAuthToken } from "./middleware.js";
+import { signAuthToken } from "../auth/middleware.js";
+import { redis } from "../redis.js";
+import { randomBytes } from "node:crypto";
 
 export const authRouter = Router();
 
@@ -55,7 +57,7 @@ authRouter.get(
     session: false,
     failureRedirect: `${config.frontendUrl}/login?error=auth`,
   }),
-  (req, res) => {
+  async (req, res) => {
     const user = req.user as {
       id: string;
       email: string;
@@ -76,9 +78,25 @@ authRouter.get(
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
-    res.redirect(`${config.frontendUrl}/auth/callback?token=${token}`);
+    const code = randomBytes(32).toString("base64url");
+    await redis.set(`auth:exchange:${code}`, token, "EX", 60, "NX");
+    res.redirect(`${config.frontendUrl}/auth/callback?code=${encodeURIComponent(code)}`);
   }
 );
+
+authRouter.post("/exchange", async (req, res) => {
+  const code = typeof req.body?.code === "string" ? req.body.code : "";
+  if (!code || code.length > 128) {
+    res.status(400).json({ error: "Invalid login code" });
+    return;
+  }
+  const token = await redis.getdel(`auth:exchange:${code}`);
+  if (!token) {
+    res.status(401).json({ error: "Login code expired or already used" });
+    return;
+  }
+  res.json({ token });
+});
 
 authRouter.post("/logout", (_req, res) => {
   res.clearCookie("auth_token");

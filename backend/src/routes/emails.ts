@@ -28,7 +28,7 @@ emailsRouter.post("/", async (req, res) => {
   }
 
   const scheduledAt = new Date(parsed.data.scheduledAt);
-  if (scheduledAt.getTime() < Date.now() - 60_000) {
+  if (!Number.isFinite(scheduledAt.getTime()) || scheduledAt.getTime() < Date.now()) {
     res.status(400).json({ error: "scheduledAt must be in the future" });
     return;
   }
@@ -49,12 +49,19 @@ emailsRouter.post("/", async (req, res) => {
     },
   });
 
-  const bullJobId = await scheduleEmailJob({
-    emailJobId: emailJob.id,
-    userId: req.user!.id,
-    senderEmail: parsed.data.fromEmail,
-    scheduledAt,
-  });
+  let bullJobId: string;
+  try {
+    bullJobId = await scheduleEmailJob({
+      emailJobId: emailJob.id,
+      userId: req.user!.id,
+      senderEmail: parsed.data.fromEmail,
+      scheduledAt,
+    });
+  } catch (error) {
+    // Keep the durable DB row for startup recovery; report queue unavailability.
+    res.status(503).json({ error: "Scheduler is temporarily unavailable", id: emailJob.id });
+    return;
+  }
 
   await prisma.emailJob.update({
     where: { id: emailJob.id },
@@ -75,7 +82,7 @@ emailsRouter.post("/", async (req, res) => {
     createdAt: emailJob.createdAt.toISOString(),
   });
 
-  res.status(201).json({ email: emailJob, bullJobId });
+  res.status(201).json({ email: { ...emailJob, status: "QUEUED", bullJobId }, bullJobId });
 });
 
 emailsRouter.get("/", async (req, res) => {
@@ -90,7 +97,7 @@ emailsRouter.get("/", async (req, res) => {
 
   const emails = await prisma.emailJob.findMany({
     where,
-    orderBy: { scheduledAt: "desc" },
+    orderBy: [{ scheduledAt: "desc" }, { createdAt: "desc" }],
     take: 100,
   });
 

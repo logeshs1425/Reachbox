@@ -6,25 +6,10 @@ import { getOrCreateEtherealSender, sendEmail } from "./mail.js";
 import { EmailJobPayload } from "./queue.js";
 import {
   redis,
-  releaseSendSlot,
   shouldNotifyRateLimit,
   tryAcquireSendSlot,
 } from "./redis.js";
 import { notifySlackRateLimit } from "./slack.js";
-
-const MIN_DELAY_KEY = "worker:min-delay:last-send";
-
-async function enforceMinDelayBetweenSends(): Promise<void> {
-  const last = await redis.get(MIN_DELAY_KEY);
-  if (last) {
-    const elapsed = Date.now() - Number(last);
-    const wait = config.minDelayBetweenSendsMs - elapsed;
-    if (wait > 0) {
-      await new Promise((r) => setTimeout(r, wait));
-    }
-  }
-  await redis.set(MIN_DELAY_KEY, String(Date.now()), "EX", 3600);
-}
 
 async function processEmailJob(job: Job<EmailJobPayload>): Promise<void> {
   const { emailJobId, userId, senderEmail } = job.data;
@@ -41,11 +26,23 @@ async function processEmailJob(job: Job<EmailJobPayload>): Promise<void> {
     return;
   }
 
-  const slot = await tryAcquireSendSlot({
-    senderEmail,
-    globalLimit: config.maxEmailsPerHour,
-    senderLimit: config.maxEmailsPerHourPerSender,
+  const claimed = await prisma.emailJob.updateMany({
+    where: { id: emailJobId, status: { in: ["SCHEDULED", "QUEUED"] } },
+    data: { status: "SENDING" },
   });
+  if (claimed.count === 0) return;
+
+  let slot: Awaited<ReturnType<typeof tryAcquireSendSlot>>;
+  try {
+    slot = await tryAcquireSendSlot({
+      senderEmail,
+      globalLimit: config.maxEmailsPerHour,
+      senderLimit: config.maxEmailsPerHourPerSender,
+    });
+  } catch (error) {
+    await prisma.emailJob.update({ where: { id: emailJobId }, data: { status: "QUEUED" } });
+    throw error;
+  }
 
   if (!slot.ok) {
     const notify = await shouldNotifyRateLimit(
@@ -54,15 +51,16 @@ async function processEmailJob(job: Job<EmailJobPayload>): Promise<void> {
       slot.reason
     );
     if (notify) {
-      await notifySlackRateLimit({
-        userId,
-        senderEmail,
-        reason: slot.reason,
-        limit:
-          slot.reason === "global"
-            ? config.maxEmailsPerHour
-            : config.maxEmailsPerHourPerSender,
-      });
+      try {
+        await notifySlackRateLimit({
+          userId,
+          senderEmail,
+          reason: slot.reason,
+          limit: slot.reason === "global" ? config.maxEmailsPerHour : config.maxEmailsPerHourPerSender,
+        });
+      } catch (error) {
+        console.error("Slack rate-limit notification failed:", error);
+      }
     }
 
     await prisma.emailJob.update({
@@ -77,13 +75,6 @@ async function processEmailJob(job: Job<EmailJobPayload>): Promise<void> {
   }
 
   try {
-    await enforceMinDelayBetweenSends();
-
-    await prisma.emailJob.update({
-      where: { id: emailJobId },
-      data: { status: "SENDING" },
-    });
-
     const smtp = await getOrCreateEtherealSender(userId, emailJob.fromEmail);
     const result = await sendEmail({
       smtp,
@@ -118,7 +109,13 @@ async function processEmailJob(job: Job<EmailJobPayload>): Promise<void> {
       createdAt: emailJob.createdAt.toISOString(),
     });
   } catch (err) {
-    await releaseSendSlot(senderEmail);
+    await prisma.emailJob.update({
+      where: { id: emailJobId },
+      data: {
+        status: "FAILED",
+        errorMessage: err instanceof Error ? err.message : "Email send failed",
+      },
+    }).catch(() => undefined);
     throw err;
   }
 }

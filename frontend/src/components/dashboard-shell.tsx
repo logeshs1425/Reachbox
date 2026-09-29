@@ -31,12 +31,19 @@ export function DashboardShell({ variant }: Props) {
   const [search, setSearch] = useState("");
   const [composeOpen, setComposeOpen] = useState(false);
   const [slackConnected, setSlackConnected] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
-    const list = await fetchEmails(token, variant);
-    setEmails(list);
-    if (list.length && !selectedId) setSelectedId(list[0].id);
+    try {
+      const list = await fetchEmails(token, variant);
+      setEmails(list);
+      setLoadError(null);
+      if (list.length && (!selectedId || !list.some((email) => email.id === selectedId))) setSelectedId(list[0].id);
+      if (!list.length) setSelectedId(null);
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : "Unable to load emails");
+    }
   }, [token, variant, selectedId]);
 
   useEffect(() => {
@@ -45,6 +52,11 @@ export function DashboardShell({ variant }: Props) {
 
   useEffect(() => {
     load();
+  }, [load]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => void load(), 15000);
+    return () => window.clearInterval(timer);
   }, [load]);
 
   useEffect(() => {
@@ -57,7 +69,7 @@ export function DashboardShell({ variant }: Props) {
 
   useEffect(() => {
     if (!token) return;
-    getSlackStatus(token).then((s) => setSlackConnected(s.connected));
+    getSlackStatus(token).then((s) => setSlackConnected(s.connected)).catch(() => setSlackConnected(false));
   }, [token]);
 
   useEffect(() => {
@@ -66,21 +78,33 @@ export function DashboardShell({ variant }: Props) {
       return;
     }
     const t = setTimeout(() => {
-      searchEmails(token, search).then(setEmails);
+      searchEmails(token, search).then((results) => {
+        setEmails(results);
+        setSelectedId(results[0]?.id ?? null);
+        setLoadError(null);
+      }).catch(() => setLoadError("Search is temporarily unavailable"));
     }, 300);
     return () => clearTimeout(t);
   }, [search, token, load]);
 
   async function onSlackConnect() {
     if (!token) return;
-    const url = await getSlackConnectUrl(token);
-    window.location.href = url;
+    try {
+      const url = await getSlackConnectUrl(token);
+      window.location.href = url;
+    } catch {
+      setLoadError("Slack OAuth is not configured on the server yet");
+    }
   }
 
   async function onSlackDisconnect() {
     if (!token) return;
-    await disconnectSlack(token);
-    setSlackConnected(false);
+    try {
+      await disconnectSlack(token);
+      setSlackConnected(false);
+    } catch {
+      setLoadError("Could not disconnect Slack. Please try again.");
+    }
   }
 
   if (loading || !user) {
@@ -92,7 +116,7 @@ export function DashboardShell({ variant }: Props) {
   }
 
   return (
-    <div className="flex min-h-screen bg-[#f4f6f8]">
+    <div className="flex h-screen min-h-[620px] overflow-hidden bg-[#f4f6f8]">
       <Sidebar onCompose={() => setComposeOpen(true)} />
       <div className="flex min-w-0 flex-1 flex-col">
         <TopHeader
@@ -104,11 +128,18 @@ export function DashboardShell({ variant }: Props) {
         />
         <div className="flex flex-1 overflow-hidden">
           <div className="flex w-full max-w-xl flex-col overflow-auto bg-white shadow-card lg:max-w-md">
-            <div className="border-b border-slate-100 px-6 py-3">
-              <h1 className="text-lg font-semibold text-slate-900">
-                {variant === "scheduled" ? "Scheduled Emails" : "Sent Emails"}
-              </h1>
+            <div className="border-b border-slate-100 px-6 py-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-lg font-semibold text-slate-900">
+                    {variant === "scheduled" ? "Scheduled Emails" : "Sent Emails"}
+                  </h1>
+                  <p className="mt-1 text-xs text-slate-500">{emails.length} {emails.length === 1 ? "email" : "emails"}</p>
+                </div>
+                <span className="h-2 w-2 rounded-full bg-emerald-400" title="Automatically refreshed" />
+              </div>
             </div>
+            {loadError && <div role="alert" className="m-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{loadError}</div>}
             <EmailList
               emails={emails}
               variant={variant}

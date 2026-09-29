@@ -67,6 +67,7 @@ export async function sendEmail(params: {
     text: params.text,
   });
 
-  const previewUrl = nodemailer.getTestMessageUrl(info) ?? undefined;
+  const preview = nodemailer.getTestMessageUrl(info);
+  const previewUrl = typeof preview === "string" ? preview : undefined;
   return { messageId: info.messageId, previewUrl };
 }

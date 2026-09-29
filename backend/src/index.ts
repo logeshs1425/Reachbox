@@ -15,6 +15,7 @@ import { searchRouter } from "./routes/search.js";
 import { slackRouter } from "./routes/slack.js";
 import { meRouter } from "./routes/me.js";
 import { recoverPendingJobs } from "./recovery.js";
+import { requireAuth } from "./auth/middleware.js";
 
 export async function createApp(): Promise<express.Application> {
   await ensureEmailIndex();
@@ -36,7 +37,7 @@ export async function createApp(): Promise<express.Application> {
     queues: [new BullMQAdapter(emailQueue)],
     serverAdapter,
   });
-  app.use("/admin/queues", serverAdapter.getRouter());
+  app.use("/admin/queues", requireAuth, serverAdapter.getRouter());
 
   app.get("/health", (_req, res) => {
     res.json({ ok: true });

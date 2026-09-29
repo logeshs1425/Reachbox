@@ -32,10 +32,9 @@ export function EmailDetail({ email }: { email: EmailJob | null }) {
           </span>
         </div>
       </div>
-      <div
-        className="flex-1 overflow-auto px-8 py-6 prose prose-sm max-w-none"
-        dangerouslySetInnerHTML={{ __html: email.bodyHtml }}
-      />
+      <div className="flex-1 overflow-auto whitespace-pre-wrap px-8 py-6 text-sm leading-7 text-slate-700">
+        {email.bodyText ?? email.bodyHtml.replace(/<[^>]*>/g, "")}
+      </div>
       {email.etherealPreview && (
         <div className="border-t border-slate-100 px-8 py-4 text-sm">
           <a
