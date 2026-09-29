@@ -1,5 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  productionBrowserSourceMaps: false,
+  poweredByHeader: false,
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "*.googleusercontent.com" },
