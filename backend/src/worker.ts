@@ -2,7 +2,7 @@ import { Worker, Job, DelayedError } from "bullmq";
 import { config, EMAIL_QUEUE_NAME } from "./config.js";
 import { prisma } from "./db.js";
 import { indexEmail } from "./elasticsearch.js";
-import { getOrCreateEtherealSender, sendEmail } from "./mail.js";
+import { getOrCreateEtherealSender, sendEmail, MailAttachment } from "./mail.js";
 import { EmailJobPayload } from "./queue.js";
 import {
   redis,
@@ -76,6 +76,9 @@ async function processEmailJob(job: Job<EmailJobPayload>): Promise<void> {
 
   try {
     const smtp = await getOrCreateEtherealSender(userId, emailJob.fromEmail);
+    const attachments = Array.isArray(emailJob.attachmentsJson)
+      ? (emailJob.attachmentsJson as unknown as MailAttachment[])
+      : undefined;
     const result = await sendEmail({
       smtp,
       from: emailJob.fromEmail,
@@ -83,6 +86,7 @@ async function processEmailJob(job: Job<EmailJobPayload>): Promise<void> {
       subject: emailJob.subject,
       html: emailJob.bodyHtml,
       text: emailJob.bodyText ?? undefined,
+      attachments,
     });
 
     const sentAt = new Date();

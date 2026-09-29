@@ -7,6 +7,12 @@ export type User = {
   avatarUrl: string | null;
 };
 
+export type AttachmentMeta = {
+  filename: string;
+  contentType: string;
+  size: number;
+};
+
 export type EmailJob = {
   id: string;
   fromEmail: string;
@@ -15,6 +21,7 @@ export type EmailJob = {
   subject: string;
   bodyHtml: string;
   bodyText: string | null;
+  attachmentsJson: AttachmentMeta[] | null;
   scheduledAt: string;
   status: string;
   sentAt: string | null;
@@ -74,7 +81,8 @@ export async function searchEmails(
   return data.results.map((email) => ({
     id: email.id!, fromEmail: email.fromEmail ?? "", toEmail: email.toEmail ?? "",
     toName: email.toName ?? null, subject: email.subject ?? "", bodyHtml: email.bodyHtml ?? email.bodyText ?? "",
-    bodyText: email.bodyText ?? null, scheduledAt: email.scheduledAt ?? email.createdAt ?? new Date().toISOString(),
+    bodyText: email.bodyText ?? null, attachmentsJson: email.attachmentsJson ?? null,
+    scheduledAt: email.scheduledAt ?? email.createdAt ?? new Date().toISOString(),
     status: email.status ?? "QUEUED", sentAt: email.sentAt ?? null, etherealPreview: email.etherealPreview ?? null,
     createdAt: email.createdAt ?? new Date().toISOString(),
   }));
@@ -92,21 +100,44 @@ export async function createEmail(
   token: string,
   body: {
     fromEmail: string;
-    toEmail: string;
+    toEmail?: string;
     toName?: string;
+    leads?: { email: string; name?: string }[];
     subject: string;
     bodyHtml: string;
     bodyText?: string;
     scheduledAt: string;
+    delaySeconds?: number;
+    hourlyLimit?: number;
+    attachments?: File[];
   }
 ): Promise<EmailJob> {
+  const form = new FormData();
+  form.append("fromEmail", body.fromEmail);
+  if (body.toEmail) form.append("toEmail", body.toEmail);
+  if (body.toName) form.append("toName", body.toName);
+  if (body.leads && body.leads.length > 0) {
+    form.append("leads", JSON.stringify(body.leads));
+  }
+  form.append("subject", body.subject);
+  form.append("bodyHtml", body.bodyHtml);
+  if (body.bodyText) form.append("bodyText", body.bodyText);
+  form.append("scheduledAt", body.scheduledAt);
+  if (body.delaySeconds) form.append("delaySeconds", body.delaySeconds.toString());
+  if (body.hourlyLimit) form.append("hourlyLimit", body.hourlyLimit.toString());
+  (body.attachments ?? []).forEach((f) => form.append("attachments", f));
+
+  // Do NOT set Content-Type manually — browser sets multipart boundary automatically
+  const headers: HeadersInit = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
   const res = await fetch(`${API_URL}/api/emails`, {
     method: "POST",
-    headers: authHeaders(token),
-    body: JSON.stringify(body),
+    headers,
+    body: form,
   });
   if (!res.ok) {
-    const err = await res.json();
+    const err = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(JSON.stringify(err));
   }
   const data = (await res.json()) as { email: EmailJob };

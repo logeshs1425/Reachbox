@@ -54,6 +54,7 @@ model EmailJob {
   subject         String
   bodyHtml        String
   bodyText        String?
+  attachmentsJson Json?
   scheduledAt     DateTime
   status          EmailStatus @default(SCHEDULED)
   bullJobId       String?     @unique

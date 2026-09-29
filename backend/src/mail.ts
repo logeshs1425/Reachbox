@@ -44,6 +44,12 @@ export async function getOrCreateEtherealSender(
   };
 }
 
+export type MailAttachment = {
+  filename: string;
+  contentType: string;
+  base64: string;
+};
+
 export async function sendEmail(params: {
   smtp: SmtpConfig;
   from: string;
@@ -51,6 +57,7 @@ export async function sendEmail(params: {
   subject: string;
   html: string;
   text?: string;
+  attachments?: MailAttachment[];
 }): Promise<{ messageId: string; previewUrl?: string }> {
   const transporter = nodemailer.createTransport({
     host: params.smtp.host,
@@ -65,6 +72,11 @@ export async function sendEmail(params: {
     subject: params.subject,
     html: params.html,
     text: params.text,
+    attachments: params.attachments?.map((a) => ({
+      filename: a.filename,
+      content: Buffer.from(a.base64, "base64"),
+      contentType: a.contentType,
+    })),
   });
 
   const preview = nodemailer.getTestMessageUrl(info);

@@ -1,11 +1,42 @@
 "use client";
 
-import Image from "next/image";
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Clock, Mail, Plus, Send } from "lucide-react";
 import clsx from "clsx";
 import { useAuth } from "@/context/auth-context";
+
+function SidebarAvatar({
+  url,
+  name,
+}: {
+  url?: string | null;
+  name?: string | null;
+}) {
+  const [error, setError] = useState(false);
+  const initial = (name || "U").trim().charAt(0).toUpperCase();
+
+  if (url && !error) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={url}
+        alt=""
+        width={40}
+        height={40}
+        className="h-10 w-10 rounded-full object-cover shrink-0"
+        onError={() => setError(true)}
+      />
+    );
+  }
+
+  return (
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-light font-semibold text-brand-dark text-sm">
+      {initial}
+    </div>
+  );
+}
 
 type Props = {
   onCompose: () => void;
@@ -34,17 +65,7 @@ export function Sidebar({ onCompose }: Props) {
 
       {user && (
         <div className="flex items-center gap-3 px-6 py-4">
-          {user.avatarUrl ? (
-            <Image
-              src={user.avatarUrl}
-              alt=""
-              width={40}
-              height={40}
-              className="rounded-full"
-            />
-          ) : (
-            <div className="h-10 w-10 rounded-full bg-brand-light" />
-          )}
+          <SidebarAvatar url={user.avatarUrl} name={user.name || user.email} />
           <div className="min-w-0">
             <p className="truncate text-sm font-medium">{user.name}</p>
             <p className="truncate text-xs text-slate-500">{user.email}</p>
