@@ -66,7 +66,12 @@ const requireGoogleOAuthConfiguration: RequestHandler = (_req, res, next) => {
 authRouter.get(
   "/google",
   requireGoogleOAuthConfiguration,
-  passport.authenticate("google", { scope: ["profile", "email"], session: false })
+  passport.authenticate("google", {
+    scope: ["openid", "email", "profile"],
+    accessType: "offline",
+    prompt: "consent",
+    session: false,
+  })
 );
 
 authRouter.get(
