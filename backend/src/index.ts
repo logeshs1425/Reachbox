@@ -44,6 +44,7 @@ export async function createApp(): Promise<express.Application> {
   });
 
   app.use("/api/auth", authRouter);
+  app.use("/auth", authRouter);
   app.use("/api/me", meRouter);
   app.use("/api/emails", emailsRouter);
   app.use("/api/search", searchRouter);
