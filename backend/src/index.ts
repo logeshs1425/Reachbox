@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import passport from "passport";
 import { createBullBoard } from "@bull-board/api";
@@ -21,6 +22,7 @@ export async function createApp(): Promise<express.Application> {
   await ensureEmailIndex();
 
   const app = express();
+  app.use(helmet({ contentSecurityPolicy: false }));
   app.use(
     cors({
       origin: config.frontendUrl,
