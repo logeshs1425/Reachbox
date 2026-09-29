@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
 import {
@@ -32,6 +32,7 @@ export function DashboardShell({ variant }: Props) {
   const [composeOpen, setComposeOpen] = useState(false);
   const [slackConnected, setSlackConnected] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const searchMountedRef = useRef(false);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -39,12 +40,15 @@ export function DashboardShell({ variant }: Props) {
       const list = await fetchEmails(token, variant);
       setEmails(list);
       setLoadError(null);
-      if (list.length && (!selectedId || !list.some((email) => email.id === selectedId))) setSelectedId(list[0].id);
-      if (!list.length) setSelectedId(null);
+      setSelectedId((prev) => {
+        if (!list.length) return null;
+        if (!prev || !list.some((email) => email.id === prev)) return list[0].id;
+        return prev;
+      });
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : "Unable to load emails");
     }
-  }, [token, variant, selectedId]);
+  }, [token, variant]);
 
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
@@ -73,7 +77,12 @@ export function DashboardShell({ variant }: Props) {
   }, [token]);
 
   useEffect(() => {
-    if (!token || !search.trim()) {
+    if (!token) return;
+    if (!searchMountedRef.current) {
+      searchMountedRef.current = true;
+      return;
+    }
+    if (!search.trim()) {
       load();
       return;
     }

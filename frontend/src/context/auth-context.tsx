@@ -12,11 +12,28 @@ import { fetchMe, logout as apiLogout, User } from "@/lib/api";
 
 const TOKEN_KEY = "reachinbox_auth_token";
 
+function getStoredToken(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function setStoredToken(t: string | null): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (t) localStorage.setItem(TOKEN_KEY, t);
+    else localStorage.removeItem(TOKEN_KEY);
+  } catch {}
+}
+
 type AuthContextValue = {
   token: string | null;
   user: User | null;
   loading: boolean;
-  setToken: (t: string | null) => void;
+  setToken: (t: string | null) => Promise<User | null>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 };
@@ -28,14 +45,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const setToken = useCallback((t: string | null) => {
-    setTokenState(t);
-    if (t) localStorage.setItem(TOKEN_KEY, t);
-    else localStorage.removeItem(TOKEN_KEY);
-  }, []);
-
   const refreshUser = useCallback(async () => {
-    const stored = localStorage.getItem(TOKEN_KEY);
+    const stored = getStoredToken();
     if (!stored) {
       setUser(null);
       setLoading(false);
@@ -46,11 +57,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const me = await fetchMe(stored);
       setUser(me);
     } catch {
-      localStorage.removeItem(TOKEN_KEY);
+      setStoredToken(null);
       setTokenState(null);
       setUser(null);
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  const setToken = useCallback(async (t: string | null): Promise<User | null> => {
+    setTokenState(t);
+    setStoredToken(t);
+    if (!t) {
+      setUser(null);
+      return null;
+    }
+    try {
+      const me = await fetchMe(t);
+      setUser(me);
+      return me;
+    } catch {
+      setUser(null);
+      return null;
     }
   }, []);
 
@@ -60,8 +88,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     if (token) await apiLogout(token).catch(() => undefined);
-    setToken(null);
-    setUser(null);
+    await setToken(null);
   }, [token, setToken]);
 
   const value = useMemo(

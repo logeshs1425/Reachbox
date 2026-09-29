@@ -2,7 +2,18 @@
 
 import { format } from "date-fns";
 import clsx from "clsx";
+import { Paperclip } from "lucide-react";
 import { EmailJob } from "@/lib/api";
+
+function formatDateSafe(dateStr?: string | null): string {
+  if (!dateStr) return "";
+  try {
+    const d = new Date(dateStr);
+    return isNaN(d.getTime()) ? dateStr : format(d, "dd MMM · h:mm a");
+  } catch {
+    return dateStr;
+  }
+}
 
 type Props = {
   emails: EmailJob[];
@@ -52,8 +63,11 @@ export function EmailList({
                     {email.toEmail}
                   </span>
                 </div>
-                <p className="truncate text-sm font-medium text-slate-800">
+                <p className="flex items-center gap-1 truncate text-sm font-medium text-slate-800">
                   {email.subject}
+                  {Array.isArray(email.attachmentsJson) && email.attachmentsJson.length > 0 && (
+                    <Paperclip className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                  )}
                 </p>
                 <p className="truncate text-xs text-slate-500">{preview}</p>
               </div>
@@ -64,7 +78,7 @@ export function EmailList({
                   </span>
                 ) : (
                   <span className="inline-flex rounded-full bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800">
-                    {format(new Date(email.scheduledAt), "dd MMM · h:mm a")}
+                    {formatDateSafe(email.scheduledAt)}
                   </span>
                 )}
               </div>

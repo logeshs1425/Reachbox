@@ -1,8 +1,39 @@
 "use client";
 
-import Image from "next/image";
+import { useState } from "react";
 import { LogOut, Search } from "lucide-react";
 import { useAuth } from "@/context/auth-context";
+
+function HeaderAvatar({
+  url,
+  name,
+}: {
+  url?: string | null;
+  name?: string | null;
+}) {
+  const [error, setError] = useState(false);
+  const initial = (name || "U").trim().charAt(0).toUpperCase();
+
+  if (url && !error) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={url}
+        alt=""
+        width={36}
+        height={36}
+        className="h-9 w-9 rounded-full object-cover shrink-0"
+        onError={() => setError(true)}
+      />
+    );
+  }
+
+  return (
+    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-light font-semibold text-brand-dark text-xs">
+      {initial}
+    </div>
+  );
+}
 
 type Props = {
   search: string;
@@ -60,15 +91,7 @@ export function TopHeader({
               </span>
               <span className="text-xs text-slate-500">{user.email}</span>
             </div>
-            {user.avatarUrl && (
-              <Image
-                src={user.avatarUrl}
-                alt=""
-                width={36}
-                height={36}
-                className="rounded-full"
-              />
-            )}
+            <HeaderAvatar url={user.avatarUrl} name={user.name || user.email} />
             <button
               type="button"
               onClick={() => logout().then(() => (window.location.href = "/login"))}
