@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type RequestHandler } from "express";
 import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import { config } from "../config.js";
@@ -9,50 +9,69 @@ import { randomBytes } from "node:crypto";
 
 export const authRouter = Router();
 
-passport.use(
-  new GoogleStrategy(
-    {
-      clientID: config.google.clientId,
-      clientSecret: config.google.clientSecret,
-      callbackURL: config.google.callbackUrl,
-    },
-    async (_accessToken, _refreshToken, profile, done) => {
-      try {
-        const email = profile.emails?.[0]?.value;
-        if (!email) {
-          done(new Error("No email from Google"));
-          return;
-        }
-
-        const user = await prisma.user.upsert({
-          where: { googleId: profile.id },
-          create: {
-            googleId: profile.id,
-            email,
-            name: profile.displayName ?? email,
-            avatarUrl: profile.photos?.[0]?.value,
-          },
-          update: {
-            name: profile.displayName ?? email,
-            avatarUrl: profile.photos?.[0]?.value,
-          },
-        });
-
-        done(null, user);
-      } catch (err) {
-        done(err as Error);
-      }
-    }
-  )
+const googleOAuthConfigured = Boolean(
+  config.google.clientId && config.google.clientSecret
 );
+
+if (googleOAuthConfigured) {
+  passport.use(
+    new GoogleStrategy(
+      {
+        clientID: config.google.clientId,
+        clientSecret: config.google.clientSecret,
+        callbackURL: config.google.callbackUrl,
+      },
+      async (_accessToken, _refreshToken, profile, done) => {
+        try {
+          const email = profile.emails?.[0]?.value;
+          if (!email) {
+            done(new Error("No email from Google"));
+            return;
+          }
+
+          const user = await prisma.user.upsert({
+            where: { googleId: profile.id },
+            create: {
+              googleId: profile.id,
+              email,
+              name: profile.displayName ?? email,
+              avatarUrl: profile.photos?.[0]?.value,
+            },
+            update: {
+              name: profile.displayName ?? email,
+              avatarUrl: profile.photos?.[0]?.value,
+            },
+          });
+
+          done(null, user);
+        } catch (err) {
+          done(err as Error);
+        }
+      }
+    )
+  );
+}
+
+const requireGoogleOAuthConfiguration: RequestHandler = (_req, res, next) => {
+  if (!googleOAuthConfigured) {
+    res.status(503).json({
+      error:
+        "Google OAuth is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in backend/.env, then restart the API.",
+    });
+    return;
+  }
+  next();
+};
 
 authRouter.get(
   "/google",
+  requireGoogleOAuthConfiguration,
   passport.authenticate("google", { scope: ["profile", "email"], session: false })
 );
 
 authRouter.get(
   "/google/callback",
+  requireGoogleOAuthConfiguration,
   passport.authenticate("google", {
     session: false,
     failureRedirect: `${config.frontendUrl}/login?error=auth`,
