@@ -1,0 +1,82 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  googleId  String   @unique
+  email     String   @unique
+  name      String
+  avatarUrl String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  emails       EmailJob[]
+  slackConnection SlackConnection?
+}
+
+model SlackConnection {
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken  String
+  teamId       String?
+  teamName     String?
+  channelId    String?
+  channelName  String?
+  botUserId    String?
+  authedUserId String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+enum EmailStatus {
+  SCHEDULED
+  QUEUED
+  SENDING
+  SENT
+  FAILED
+  CANCELLED
+}
+
+model EmailJob {
+  id              String      @id @default(uuid())
+  userId          String
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fromEmail       String
+  toEmail         String
+  toName          String?
+  subject         String
+  bodyHtml        String
+  bodyText        String?
+  scheduledAt     DateTime
+  status          EmailStatus @default(SCHEDULED)
+  bullJobId       String?     @unique
+  idempotencyKey  String      @unique
+  sentAt          DateTime?
+  etherealPreview String?
+  errorMessage    String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([userId, status])
+  @@index([scheduledAt])
+}
+
+model SenderProfile {
+  id        String   @id @default(uuid())
+  userId    String
+  email     String
+  smtpUser  String
+  smtpPass  String
+  smtpHost  String
+  smtpPort  Int      @default(587)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, email])
+}
