@@ -159,6 +159,7 @@ emailsRouter.post(
 );
 
 emailsRouter.get("/", async (req, res) => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
   const status = req.query.status as string | undefined;
   const where: Record<string, unknown> = { userId: req.user!.id };
 

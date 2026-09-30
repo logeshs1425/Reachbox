@@ -59,7 +59,7 @@ export function DashboardShell({ variant }: Props) {
   }, [load]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => void load(), 15000);
+    const timer = window.setInterval(() => void load(), 3000);
     return () => window.clearInterval(timer);
   }, [load]);
 

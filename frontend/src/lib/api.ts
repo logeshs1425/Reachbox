@@ -50,8 +50,9 @@ export async function fetchEmails(
   token: string,
   status: "scheduled" | "sent"
 ): Promise<EmailJob[]> {
-  const res = await fetch(`${API_URL}/api/emails?status=${status}`, {
+  const res = await fetch(`${API_URL}/api/emails?status=${status}&_t=${Date.now()}`, {
     headers: authHeaders(token),
+    cache: "no-store",
   });
   if (!res.ok) throw new Error("Could not load emails");
   const data = (await res.json()) as { emails: EmailJob[] };
