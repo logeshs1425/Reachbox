@@ -1,4 +1,5 @@
 import { Worker, Job, DelayedError } from "bullmq";
+import IORedis from "ioredis";
 import { config, EMAIL_QUEUE_NAME } from "./config.js";
 import { prisma } from "./db.js";
 import { indexEmail } from "./elasticsearch.js";
@@ -125,11 +126,19 @@ async function processEmailJob(job: Job<EmailJobPayload>): Promise<void> {
 }
 
 export function startEmailWorker(): Worker<EmailJobPayload> {
+  const isRediss = config.redisUrl.startsWith("rediss://");
+  const workerRedis = new IORedis(config.redisUrl, {
+    maxRetriesPerRequest: null,
+    enableReadyCheck: false,
+    lazyConnect: false,
+    ...(isRediss ? { tls: { rejectUnauthorized: false } } : {}),
+  });
+
   const worker = new Worker<EmailJobPayload>(
     EMAIL_QUEUE_NAME,
     processEmailJob,
     {
-      connection: redis.duplicate(),
+      connection: workerRedis,
       concurrency: config.workerConcurrency,
       limiter: {
         max: 1,

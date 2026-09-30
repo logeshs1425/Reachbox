@@ -1,8 +1,11 @@
 import { Redis } from "ioredis";
 import { config } from "./config.js";
 
+const isRediss = config.redisUrl.startsWith("rediss://");
+
 export const redis = new Redis(config.redisUrl, {
   maxRetriesPerRequest: null,
+  ...(isRediss ? { tls: { rejectUnauthorized: false } } : {}),
 });
 
 export function hourWindowKey(date: Date = new Date()): string {
