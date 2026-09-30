@@ -28,7 +28,7 @@ async function processEmailJob(job: Job<EmailJobPayload>): Promise<void> {
   }
 
   const claimed = await prisma.emailJob.updateMany({
-    where: { id: emailJobId, status: { in: ["SCHEDULED", "QUEUED"] } },
+    where: { id: emailJobId, status: { in: ["SCHEDULED", "QUEUED", "FAILED"] } },
     data: { status: "SENDING" },
   });
   if (claimed.count === 0) return;
