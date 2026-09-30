@@ -57,9 +57,14 @@ export async function createApp(): Promise<express.Application> {
 }
 
 export async function bootstrap(): Promise<void> {
-  const recovered = await recoverPendingJobs();
-  if (recovered > 0) {
-    console.log(`Recovered ${recovered} pending email job(s) from database`);
+  // Recovery is best-effort — don't crash startup if DB isn't ready yet
+  try {
+    const recovered = await recoverPendingJobs();
+    if (recovered > 0) {
+      console.log(`Recovered ${recovered} pending email job(s) from database`);
+    }
+  } catch (err) {
+    console.warn("⚠  Could not run job recovery on startup (DB may not be ready):", (err as Error).message);
   }
 
   const worker = startEmailWorker();

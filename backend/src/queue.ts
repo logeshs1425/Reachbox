@@ -11,10 +11,10 @@ export type EmailJobPayload = {
 export const emailQueue = new Queue<EmailJobPayload>(EMAIL_QUEUE_NAME, {
   connection: redis,
   defaultJobOptions: {
-    removeOnComplete: 1000,
-    removeOnFail: 5000,
-    attempts: 10,
-    backoff: { type: "fixed", delay: 5000 },
+    removeOnComplete: { count: 500, age: 7 * 24 * 60 * 60 }, // keep last 500 completed jobs for 7 days
+    removeOnFail: false,      // NEVER auto-delete failed jobs — keeps them visible in Bull Board
+    attempts: 3,              // Retry up to 3 times before marking as failed
+    backoff: { type: "exponential", delay: 10_000 }, // 10s, 20s, 40s between retries
   },
 });
 

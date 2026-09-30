@@ -139,10 +139,18 @@ export function startEmailWorker(): Worker<EmailJobPayload> {
   );
 
   worker.on("failed", (job, err) => {
-    if (err.message.includes("Rate limit")) {
-      return;
+    if (err instanceof DelayedError || err.message.includes("Rate limit")) {
+      return; // expected — job is being rescheduled
     }
-    console.error(`Job ${job?.id} failed:`, err.message);
+    console.error(`❌ Job ${job?.id} FAILED (attempt ${job?.attemptsMade}/${job?.opts.attempts}):`, err.message);
+  });
+
+  worker.on("completed", (job) => {
+    console.log(`✅ Job ${job.id} completed successfully`);
+  });
+
+  worker.on("error", (err) => {
+    console.error("Worker error:", err.message);
   });
 
   return worker;
