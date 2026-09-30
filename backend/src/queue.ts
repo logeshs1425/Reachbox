@@ -25,6 +25,13 @@ export async function scheduleEmailJob(params: {
   scheduledAt: Date;
 }): Promise<string> {
   const delayMs = Math.max(0, params.scheduledAt.getTime() - Date.now());
+
+  // Clean up any existing job with same ID so BullMQ accepts the new delay cleanly
+  const existing = await emailQueue.getJob(params.emailJobId);
+  if (existing) {
+    await existing.remove().catch(() => undefined);
+  }
+
   const job = await emailQueue.add(
     "send-email",
     {

@@ -84,6 +84,12 @@ export function EmailDetail({ email }: { email: EmailJob | null }) {
         </div>
       )}
 
+      {email.errorMessage && (
+        <div className="border-t border-rose-100 bg-rose-50/50 px-8 py-4 text-sm text-rose-700">
+          <strong className="font-semibold">Send Failure Reason:</strong> {email.errorMessage}
+        </div>
+      )}
+
       {email.etherealPreview && (
         <div className="border-t border-slate-100 px-8 py-4 text-sm">
           <a

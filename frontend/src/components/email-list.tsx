@@ -72,7 +72,11 @@ export function EmailList({
                 <p className="truncate text-xs text-slate-500">{preview}</p>
               </div>
               <div className="shrink-0 text-right">
-                {variant === "sent" ? (
+                {email.status === "FAILED" ? (
+                  <span className="inline-flex rounded-full bg-rose-50 px-2 py-1 text-xs font-medium text-rose-700">
+                    Failed
+                  </span>
+                ) : variant === "sent" ? (
                   <span className="inline-flex rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">
                     Sent
                   </span>

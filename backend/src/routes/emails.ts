@@ -163,7 +163,7 @@ emailsRouter.get("/", async (req, res) => {
   const where: Record<string, unknown> = { userId: req.user!.id };
 
   if (status === "scheduled") {
-    where.status = { in: ["SCHEDULED", "QUEUED", "SENDING"] };
+    where.status = { in: ["SCHEDULED", "QUEUED", "SENDING", "FAILED"] };
   } else if (status === "sent") {
     where.status = "SENT";
   }

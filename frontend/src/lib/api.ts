@@ -26,6 +26,7 @@ export type EmailJob = {
   status: string;
   sentAt: string | null;
   etherealPreview: string | null;
+  errorMessage: string | null;
   createdAt: string;
 };
 

@@ -24,23 +24,35 @@ export async function getOrCreateEtherealSender(
     };
   }
 
-  const testAccount = await nodemailer.createTestAccount();
+  let testAccount;
+  let attempts = 0;
+  while (attempts < 3) {
+    try {
+      testAccount = await nodemailer.createTestAccount();
+      break;
+    } catch (e) {
+      attempts++;
+      if (attempts >= 3) throw e;
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+  }
+
   await prisma.senderProfile.create({
     data: {
       userId,
       email: fromEmail,
-      smtpUser: testAccount.user,
-      smtpPass: testAccount.pass,
-      smtpHost: testAccount.smtp.host,
-      smtpPort: testAccount.smtp.port,
+      smtpUser: testAccount!.user,
+      smtpPass: testAccount!.pass,
+      smtpHost: testAccount!.smtp.host,
+      smtpPort: testAccount!.smtp.port,
     },
   });
 
   return {
-    host: testAccount.smtp.host,
-    port: testAccount.smtp.port,
-    user: testAccount.user,
-    pass: testAccount.pass,
+    host: testAccount!.smtp.host,
+    port: testAccount!.smtp.port,
+    user: testAccount!.user,
+    pass: testAccount!.pass,
   };
 }
 
