@@ -1,122 +1,147 @@
 # ReachInbox Email Scheduler
 
-Production-style **email scheduling service + dashboard** for the Outbox Labs assignment: Express + BullMQ + Redis, PostgreSQL, Elasticsearch, Ethereal SMTP, Google OAuth, and Slack rate-limit alerts.
+A full-stack email scheduling dashboard built with Next.js, Express, BullMQ, Redis, and PostgreSQL. Users can compose emails, schedule them for a future time, and track delivery status across Scheduled and Sent views.
+
+## Tech Stack
+
+**Backend** — Node.js, Express, TypeScript, BullMQ, Prisma, PostgreSQL, Redis, Nodemailer, Elasticsearch, Passport (Google OAuth)
+
+**Frontend** — Next.js 14, TypeScript, Tailwind CSS, shadcn/ui
+
+## How it works
+
+Email jobs are queued as BullMQ **delayed jobs** using `delay = scheduledAt - now`. There are no cron jobs. When the delay expires, a worker picks up the job, sends the email via SMTP, and updates the database status to `SENT`.
+
+On server restart, `recoverPendingJobs()` scans the database for any `SCHEDULED` or `QUEUED` rows that have no active BullMQ job and re-queues them — so no emails are lost if Redis is flushed or the server crashes.
+
+Rate limiting is enforced using Redis Lua scripts that atomically check and increment hourly counters per sender and globally. If a sender hits the hourly cap, the job is moved to the next hour rather than dropped, and a Slack DM is sent as a notification.
 
 ## Architecture
 
-```mermaid
+```
 flowchart LR
-  FE[Next.js Dashboard] --> API[Express API]
-  API --> PG[(PostgreSQL)]
-  API --> Q[BullMQ Queue]
-  Q --> Redis[(Redis)]
-  Worker[BullMQ Worker] --> Redis
-  Worker --> SMTP[Ethereal SMTP]
-  Worker --> ES[(Elasticsearch)]
-  Worker --> Slack[Slack API]
-  API --> ES
+  Frontend → Express API → PostgreSQL
+  Express API → BullMQ → Redis
+  BullMQ Worker → SMTP (Nodemailer)
+  BullMQ Worker → Elasticsearch
+  BullMQ Worker → Slack API
 ```
 
-- **Scheduling:** BullMQ **delayed jobs** (`delay = scheduledAt - now`). No cron.
-- **Persistence:** Jobs live in Redis; email rows in Postgres. On startup, `recoverPendingJobs()` re-adds DB rows that have no BullMQ job (e.g. Redis flush).
-- **Idempotency:** BullMQ `jobId = emailJobId`; a conditional DB status claim prevents two workers from sending the same row. A crash after SMTP accepts a message but before Postgres records `SENT` is inherently ambiguous because SMTP offers no idempotency key; startup marks interrupted `SENDING` rows failed for review rather than blindly resending and risking duplicates.
-
-## Rate limiting & throughput
+## Rate Limits
 
 | Setting | Env var | Default |
-|--------|---------|---------|
+|---|---|---|
 | Worker concurrency | `WORKER_CONCURRENCY` | `5` |
-| Min delay between sends | `MIN_DELAY_BETWEEN_SENDS_MS` | `2000` (2s) |
-| Global emails / hour | `MAX_EMAILS_PER_HOUR` | `200` |
-| Per-sender emails / hour | `MAX_EMAILS_PER_HOUR_PER_SENDER` | `50` |
+| Min delay between sends | `MIN_DELAY_BETWEEN_SENDS_MS` | `2000` |
+| Max emails per hour (global) | `MAX_EMAILS_PER_HOUR` | `200` |
+| Max emails per hour (per sender) | `MAX_EMAILS_PER_HOUR_PER_SENDER` | `50` |
 
-**Enforcement (Redis, safe across workers/instances):**
+## Local Setup
 
-1. Before send, a Redis Lua script atomically checks and increments `rate:global:{YYYYMMDDHH}` and `rate:sender:{email}:{YYYYMMDDHH}` (UTC hour windows, 2h TTL).
-2. If over limit, counters are rolled back, **`job.moveToDelayed(nextHour)`** runs (jobs are **not dropped**), and Slack is notified once per user/sender/reason/hour.
-3. BullMQ's Redis-backed queue limiter (`max: 1` per `MIN_DELAY_BETWEEN_SENDS_MS`) spaces sends across worker instances; configured concurrency controls parallel job processing while the limiter serializes SMTP starts.
-
-**Load (1000+ jobs at same time):** Jobs become active as delays expire; concurrency + min-delay throttle SMTP; hourly caps delay overflow into the next UTC hour while preserving FIFO per queue as much as BullMQ ordering allows.
-
-## Prerequisites
-
-- Node.js 20+
-- Docker (for Postgres, Redis, Elasticsearch)
-
-## Quick start
+**Requirements:** Node.js 20+, Docker
 
 ```bash
-# 1. Infrastructure
+# Start Postgres, Redis, and Elasticsearch
 docker compose up -d
 
-# 2. Backend
+# Backend
 cd backend
 cp .env.example .env
-# Fill GOOGLE_* and optionally SLACK_*
 npm install
 npx prisma db push
 npm run dev
 
-# 3. Frontend (new terminal)
+# Frontend (separate terminal)
 cd frontend
 cp .env.example .env.local
 npm install
 npm run dev
 ```
 
-- App: http://localhost:3000  
-- API: http://localhost:4000  
-- **Bull Board:** http://localhost:4000/admin/queues (Google-authenticated)
+- Dashboard: http://localhost:3000
+- API: http://localhost:4000
+- Bull Board: http://localhost:4000/admin/queues
 
-## OAuth setup
+## Environment Variables
 
-### Google (required)
+### Backend (`backend/.env`)
 
-1. [Google Cloud Console](https://console.cloud.google.com/) → OAuth client (Web).
-2. Authorized redirect URI: `http://localhost:4000/api/auth/google/callback`
-3. Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` in `backend/.env`.
+```
+DATABASE_URL=
+REDIS_URL=
+JWT_SECRET=
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_CALLBACK_URL=http://localhost:4000/api/auth/google/callback
+SLACK_CLIENT_ID=
+SLACK_CLIENT_SECRET=
+SLACK_REDIRECT_URI=http://localhost:4000/api/slack/callback
+FRONTEND_URL=http://localhost:3000
+```
 
-### Slack (rate-limit notifications)
+### Frontend (`frontend/.env.local`)
 
-1. Create a Slack app → OAuth & Permissions → redirect URL `http://localhost:4000/api/slack/callback`
-2. Bot scopes: `chat:write`, `im:write`, `users:read`
-3. Set `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET` in `backend/.env`.
-4. In the dashboard, click **Connect Slack**. When a sender hits the hourly cap, the app posts a DM via `chat.postMessage`.
+```
+NEXT_PUBLIC_API_URL=http://localhost:4000
+```
 
-## API (authenticated with `Authorization: Bearer <jwt>`)
+## Google OAuth Setup
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/) and create an OAuth 2.0 Web Client.
+2. Add `http://localhost:4000/api/auth/google/callback` as an authorized redirect URI.
+3. Copy the Client ID and Secret into `backend/.env`.
+
+## Slack Setup (optional)
+
+Slack notifications are sent as DMs when a sender hits the hourly rate limit.
+
+1. Create a Slack app at [api.slack.com](https://api.slack.com).
+2. Under OAuth & Permissions, add redirect URL: `http://localhost:4000/api/slack/callback`
+3. Add bot scopes: `chat:write`, `im:write`, `users:read`
+4. Add the Client ID and Secret to `backend/.env`.
+5. In the dashboard header, click **Connect Slack** to authorize.
+
+## API Endpoints
+
+All endpoints except auth require `Authorization: Bearer <token>`.
 
 | Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/auth/google` | Start Google login |
-| POST | `/api/emails` | Schedule email |
-| GET | `/api/emails?status=scheduled\|sent` | List emails |
-| GET | `/api/search?q=` | Elasticsearch search |
-| GET | `/api/slack/connect` | Slack OAuth URL |
-| GET | `/api/me/limits` | Show configured limits |
+|---|---|---|
+| GET | `/api/auth/google` | Start Google OAuth flow |
+| GET | `/api/auth/google/callback` | Google OAuth callback |
+| POST | `/api/emails` | Schedule a new email |
+| GET | `/api/emails?status=scheduled` | List pending emails |
+| GET | `/api/emails?status=sent` | List sent emails |
+| GET | `/api/search?q=` | Search emails via Elasticsearch |
+| GET | `/api/slack/connect` | Get Slack OAuth URL |
+| GET | `/api/me/limits` | Get current rate limit config |
 
-## Demo checklist
-
-1. Login with Google → dashboard with name, email, avatar.
-2. Compose → schedule email → appears under **Scheduled**; after send, under **Sent** with Ethereal preview link.
-3. Restart API → future sends still fire (Redis + DB recovery).
-4. Lower `MAX_EMAILS_PER_HOUR_PER_SENDER=2`, schedule 3+ emails → jobs delay to next hour; Slack message if connected.
-5. Open Bull Board to inspect queue state.
-6. Search bar hits Elasticsearch index.
-
-## Project structure
+## Project Structure
 
 ```
-backend/     Express, BullMQ worker, Prisma, ES, Slack
-frontend/    Next.js 14 + Tailwind dashboard (Figma-inspired layout)
-docker-compose.yml
+reachinbox-email-scheduler/
+├── backend/
+│   ├── prisma/          # Database schema and migrations
+│   ├── src/
+│   │   ├── routes/      # Express route handlers
+│   │   ├── worker.ts    # BullMQ job processor
+│   │   ├── queue.ts     # Queue setup and job scheduling
+│   │   ├── mail.ts      # Nodemailer send logic
+│   │   ├── redis.ts     # Redis/ioredis connection
+│   │   └── index.ts     # Server entry point
+│   └── .env.example
+├── frontend/
+│   ├── src/
+│   │   ├── app/         # Next.js app router pages
+│   │   ├── components/  # Dashboard, compose modal, email list
+│   │   ├── context/     # Auth context
+│   │   └── lib/         # API client
+│   └── .env.example
+└── docker-compose.yml
 ```
 
-## Trade-offs
+## Notes
 
-- Hourly windows use **UTC** for simple Redis keys; production might use tenant timezone.
-- Ethereal creates **one SMTP account per (user, fromEmail)** for multi-sender demos.
-- Bull Board is open in dev; restrict in production (auth / network).
-
----
-
-Built for ReachInbox / Outbox Labs hiring assignment.
+- Elasticsearch is optional. If `ELASTICSEARCH_URL` is not set or unreachable, the server starts normally and the search bar is disabled.
+- Ethereal SMTP is used for email delivery in development. One account is created per `(user, fromEmail)` pair and reused on subsequent sends.
+- Hourly rate limit windows are keyed by UTC hour.
