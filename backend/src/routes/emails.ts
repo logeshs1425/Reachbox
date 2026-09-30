@@ -167,6 +167,8 @@ emailsRouter.get("/", async (req, res) => {
     where.status = { in: ["SCHEDULED", "QUEUED", "SENDING", "FAILED"] };
   } else if (status === "sent") {
     where.status = "SENT";
+  } else if (status === "all") {
+    // no filter
   }
 
   const emails = await prisma.emailJob.findMany({
